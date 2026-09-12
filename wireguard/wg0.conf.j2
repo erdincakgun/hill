@@ -1,0 +1,14 @@
+[Interface]
+Address = {{ address }}
+SaveConfig = false
+PostUp = iptables -t nat -I POSTROUTING -o {{ interface | default(ansible_default_ipv4.interface) }} -j MASQUERADE
+PreDown = iptables -t nat -D POSTROUTING -o {{ interface | default(ansible_default_ipv4.interface) }} -j MASQUERADE
+ListenPort = {{ listen_port }}
+PrivateKey = {{ wg_private_key }}
+MTU = 1420
+
+{% for peer in peers %}
+[Peer]
+PublicKey = {{ peer.public_key }}
+AllowedIPs = {{ peer.allowed_ips }}
+{% endfor %}

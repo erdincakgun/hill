@@ -1,0 +1,14 @@
+---
+all:
+  vars:
+    ansible_port: 22
+    ansible_user: ubuntu
+    ansible_ssh_common_args: -o StrictHostKeyChecking=no
+    ansible_python_interpreter: auto_silent
+  hosts:
+    139.99.209.68:
+      address: 10.192.22.1/24
+      listen_port: "51853"
+      peers:
+        - public_key: jVUpFNNYDVShUEdBHUBMu90hCNv1eBVdjmkF5pZwdT8=
+          allowed_ips: 10.192.22.2/32

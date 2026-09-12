@@ -1,0 +1,145 @@
+---
+- name: Setup WireGuard
+  hosts: all
+  tasks:
+    - name: Download wireguard-tools.deb
+      ansible.builtin.get_url:
+        url: https://archive.ubuntu.com/ubuntu/pool/main/w/wireguard/wireguard-tools_1.0.20210914-1ubuntu4_amd64.deb
+        dest: /tmp/wireguard-tools.deb
+        mode: "0644"
+      delegate_to: 127.0.0.1
+
+    - name: Download wireguard.deb
+      ansible.builtin.get_url:
+        url: https://archive.ubuntu.com/ubuntu/pool/universe/w/wireguard/wireguard_1.0.20210914-1ubuntu4_all.deb
+        dest: /tmp/wireguard.deb
+        mode: "0644"
+      delegate_to: 127.0.0.1
+
+    - name: Copy WireGuard Tools package to host
+      ansible.builtin.copy:
+        src: /tmp/wireguard-tools.deb
+        dest: /tmp/wireguard-tools.deb
+        mode: "0644"
+      become: true
+
+    - name: Copy WireGuard package to host
+      ansible.builtin.copy:
+        src: /tmp/wireguard.deb
+        dest: /tmp/wireguard.deb
+        mode: "0644"
+      become: true
+
+    - name: Install WireGuard Tools from pre-staged .deb
+      ansible.builtin.apt:
+        deb: /tmp/wireguard-tools.deb
+      become: true
+
+    - name: Install WireGuard from pre-staged .deb
+      ansible.builtin.apt:
+        deb: /tmp/wireguard.deb
+      become: true
+
+    - name: Check if WireGuard private key already exists
+      ansible.builtin.stat:
+        path: /etc/wireguard/private.key
+      register: wg_private_key_stat
+      become: true
+
+    - name: Generate WireGuard private key
+      ansible.builtin.command: wg genkey
+      register: wg_private_key_generated
+      when: not wg_private_key_stat.stat.exists
+      no_log: true
+
+    - name: Save WireGuard private key
+      ansible.builtin.copy:
+        content: "{{ wg_private_key_generated.stdout }}"
+        dest: /etc/wireguard/private.key
+        owner: root
+        group: root
+        mode: "0400"
+      become: true
+      when: not wg_private_key_stat.stat.exists
+      no_log: true
+
+    - name: Check if WireGuard public key already exists
+      ansible.builtin.stat:
+        path: /etc/wireguard/public.key
+      register: wg_public_key_stat
+      become: true
+
+    - name: Generate WireGuard public key from private key
+      ansible.builtin.shell: wg pubkey < /etc/wireguard/private.key
+      register: wg_public_key_generated
+      when: not wg_public_key_stat.stat.exists
+      become: true
+      no_log: true
+
+    - name: Save WireGuard public key
+      ansible.builtin.copy:
+        content: "{{ wg_public_key_generated.stdout }}"
+        dest: /etc/wireguard/public.key
+        owner: root
+        group: root
+        mode: "0400"
+      become: true
+      when: not wg_public_key_stat.stat.exists
+      no_log: true
+
+    - name: Read WireGuard private key
+      ansible.builtin.slurp:
+        src: /etc/wireguard/private.key
+      register: wg_private_key_file
+      become: true
+      no_log: true
+
+    - name: Read WireGuard public key
+      ansible.builtin.slurp:
+        src: /etc/wireguard/public.key
+      register: wg_public_key_file
+      become: true
+      no_log: true
+
+    - name: Set key facts
+      ansible.builtin.set_fact:
+        wg_private_key: "{{ wg_private_key_file.content | b64decode | trim }}"
+        wg_public_key: "{{ wg_public_key_file.content | b64decode | trim }}"
+      no_log: true
+
+    - name: Show WireGuard public key
+      ansible.builtin.debug:
+        msg: "Server public key: {{ wg_public_key }}"
+
+    - name: Save WireGuard config
+      ansible.builtin.template:
+        src: wg0.conf.j2
+        dest: /etc/wireguard/wg0.conf
+        owner: root
+        group: root
+        mode: "0400"
+      become: true
+      no_log: true
+
+    - name: Enable IPv4 forwarding
+      ansible.posix.sysctl:
+        name: net.ipv4.ip_forward
+        value: "1"
+        sysctl_set: true
+        state: present
+        reload: true
+      become: true
+
+    - name: Stop WireGuard
+      ansible.builtin.systemd_service:
+        name: wg-quick@wg0.service
+        state: stopped
+      become: true
+
+    - name: Enable and start WireGuard service
+      ansible.builtin.systemd_service:
+        name: wg-quick@wg0.service
+        enabled: true
+        state: started
+        daemon_reload: true
+      become: true
